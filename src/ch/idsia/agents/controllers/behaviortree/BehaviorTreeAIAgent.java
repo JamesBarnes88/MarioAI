@@ -2,6 +2,8 @@ package ch.idsia.agents.controllers.behaviortree;
 
 import ch.idsia.agents.Agent;
 import ch.idsia.agents.controllers.BasicMarioAIAgent;
+import ch.idsia.agents.controllers.behaviortree.composites.Selector;
+import ch.idsia.agents.controllers.behaviortree.composites.Sequence;
 import ch.idsia.benchmark.mario.engine.sprites.Mario;
 import ch.idsia.benchmark.mario.environments.Environment;
 
@@ -9,66 +11,133 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
     int trueJumpCounter = 0;
     int maxJumpCounter = 16;
     int trueSpeedCounter = 0;
+    int trueMoveCounter = 0;
+    int maxMoveCounter = 10;
+    boolean isMovingSlow = false;
 
     // Behavior Tree variable
     private BehaviorTree behaviorTree;
 
 
     // Actions
-    private Task jumpAction = object -> {
-//        if (isMarioOnGround && action[Mario.KEY_JUMP])
-        System.out.println("attempting to jump");
+    private Task lowJumpAction = object -> {
+        System.out.println("low jumping");
+        maxJumpCounter = 4;
         action[Mario.KEY_JUMP] = true;
-        trueJumpCounter++;
         return true;
     };
 
-    private Task moveRight = object -> {
-        System.out.println("moving right");
+    private Task highJumpAction = object -> {
+        System.out.println("high jumping");
+        maxJumpCounter = 16;
+        action[Mario.KEY_JUMP] = true;
+        return true;
+    };
+
+    private Task speed = object -> {
+        System.out.println("speeding");
+        action[Mario.KEY_SPEED] = true;
+        return true;
+    };
+
+    private Task slowMoveRightAction = object -> {
+        System.out.println("slow moving right");
+        maxMoveCounter = 2;
+        isMovingSlow = true;
+        action[Mario.KEY_LEFT] = false;
         action[Mario.KEY_RIGHT] = true;
+        return true;
+    };
+
+    private Task moveRightAction = object -> {
+//        System.out.println("moving right");
+        action[Mario.KEY_LEFT] = false;
+        action[Mario.KEY_RIGHT] = true;
+        return true;
+    };
+
+    private Task moveLeftAction = object -> {
+//        System.out.println("moving right");
+        action[Mario.KEY_RIGHT] = false;
+        action[Mario.KEY_LEFT] = true;
         return true;
     };
 
     private Task doNothing = object -> true;
 
     // Conditionals
-    private Task isEnemyNotNear = object ->  {
-        if (!isEnemyNear(marioEgoCol, marioEgoRow, 6)) {
-            System.out.println("enemy not near");
+    private Task isEnemyNear = object ->  {
+        if (isEnemyNear(marioEgoCol, marioEgoRow, 2)) {
+            System.out.println("enemy found near");
             return true;
         } else {
-            System.out.println("enemy found near");
+//            System.out.println("enemy not near");
             return false;
         }
     };
 
     private Task isNotJumping = object -> {
-        if (isMarioAbleToJump) {
+        if (!action[Mario.KEY_JUMP] || !isMarioAbleToJump) {
             System.out.println("not jumping");
-            return true;
+            return false;
         } else {
             System.out.println("still jumping");
-            return false;
+            return true;
         }
     };
 
     private Task continueJumping = object -> {
-        if (trueJumpCounter > 16) {
-            System.out.println("jump height acheived");
-            action[Mario.KEY_JUMP] = false;
-            trueJumpCounter = 0;
-            maxJumpCounter = 16;
-            return false;
+        System.out.println("jump count: " + trueJumpCounter);
+        if (action[Mario.KEY_JUMP]) {
+            if (trueJumpCounter > maxJumpCounter) {
+//                System.out.println("jump height achieved");
+                action[Mario.KEY_JUMP] = false;
+                trueJumpCounter = 0;
+                maxJumpCounter = 16;
+                return true;
+            } else {
+                trueJumpCounter++;
+//                System.out.println("jump still in progress");
+//                System.out.println("jumping");
+                action[Mario.KEY_JUMP] = true;
+                return true;
+            }
         } else {
-            System.out.println("jump still in progress");
-            return true;
+            return false;
+        }
+    };
+
+    private Task continueMoving = object -> {
+        System.out.println("move count: " + trueMoveCounter + "; maxCount: " + maxMoveCounter + "; ismovingslow: " + isMovingSlow);
+        if (isMovingSlow && (action[Mario.KEY_LEFT] || action[Mario.KEY_RIGHT])) {
+            if (trueMoveCounter > maxMoveCounter) {
+                System.out.println("Moving Now! move count achieved");
+                if (action[Mario.KEY_LEFT])
+                    action[Mario.KEY_LEFT] = true;
+                else
+                    action[Mario.KEY_RIGHT] = true;
+                trueMoveCounter = 0;
+                maxMoveCounter = 10;
+                isMovingSlow = false;
+
+                return true;
+            } else {
+                trueMoveCounter++;
+                System.out.println("Move pausing");
+                action[Mario.KEY_LEFT] = false;
+                action[Mario.KEY_RIGHT] = false;
+
+                return true;
+            }
+        } else {
+            return false;
         }
     };
 
     Task isWallBlocking = object -> {
-//        System.out.println("checking wall block");
-        System.out.println("level obj: " + levelScene[marioEgoRow][marioEgoCol + 1]);
+        System.out.println("checking wall block");
         if (levelScene[marioEgoRow][marioEgoCol + 1] != 0) {
+            System.out.println("level obj: " + levelScene[marioEgoRow][marioEgoCol + 1]);
             return true;
         } else {
             return false;
@@ -80,24 +149,49 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
         // Create Behavior Tree
         this.behaviorTree = new BehaviorTree();
 
-        Selector checkEnemy = new Selector();
-        Selector checkForJump = new Selector();
-        Sequence moveSequence = new Sequence();
-        Sequence jumpSequence = new Sequence();
+        Sequence headSequence = new Sequence();
 
-        checkEnemy.addTask(isEnemyNotNear);
-        checkEnemy.addTask(jumpAction);
+        Selector jumpSelector = new Selector();
+        Selector moveSelector = new Selector();
 
-        checkForJump.addTask(isNotJumping);
-        checkForJump.addTask(new Sequence().addTask(continueJumping).addTask(jumpAction));
+        Sequence continueJumpingSequence = new Sequence();
+        Sequence jumpIfBlockingSequence = new Sequence();
+        Sequence jumpIfEnemyNearSequence = new Sequence();
 
-        jumpSequence.addTask(isWallBlocking).addTask(moveRight).addTask(jumpAction);
+        Sequence moveIfEnemyNearSequence = new Sequence();
+        Sequence moveRightSequence = new Sequence();
 
+        // Jumping Branch
 
-        moveSequence.addTask(checkForJump).addTask(checkEnemy).addTask(moveRight).addTask(jumpSequence);
-//        moveSequence.addTask(checkEnemy);
+        // Construct continue jumping
+        continueJumpingSequence.addTask(continueJumping);
 
-        behaviorTree.setHead(moveSequence);
+        // Construct if blocking jumping
+        jumpIfBlockingSequence.addTask(isWallBlocking).addTask(highJumpAction);
+
+        // Construct enemy near jumping
+        jumpIfEnemyNearSequence.addTask(isEnemyNear).addTask(lowJumpAction);
+
+        // Movement Branch
+
+        // todo - try to move right slowly
+        // If Enemy Near
+        moveIfEnemyNearSequence.addTask(isEnemyNear).addTask(slowMoveRightAction);
+
+        // Move Right with speed
+        moveRightSequence.addTask(speed).addTask(moveRightAction);
+
+        // Tree Construction
+
+        // Construct Jumping Selection
+        jumpSelector.addTask(continueJumpingSequence).addTask(jumpIfBlockingSequence).addTask(jumpIfEnemyNearSequence).addTask(moveRightSequence);
+
+        // Construct Move Selection
+        moveSelector.addTask(continueMoving).addTask(new Sequence().addTask(isWallBlocking).addTask(moveRightAction)).addTask(moveIfEnemyNearSequence).addTask(moveRightSequence);
+
+        headSequence.addTask(jumpSelector).addTask(moveSelector);
+
+        behaviorTree.setHead(headSequence);
     }
 
     @Override
@@ -111,8 +205,8 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
 
     @Override
     public boolean[] getAction() {
-        action = super.getAction();
-//        action[Mario.KEY_SPEED] = true;
+//        action = super.getAction();
+        action[Mario.KEY_SPEED] = false;
         behaviorTree.run(null);
 
         return action;
