@@ -174,7 +174,6 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
 
         // Movement Branch
 
-        // todo - try to move right slowly
         // If Enemy Near
         moveIfEnemyNearSequence.addTask(isEnemyNear).addTask(slowMoveRightAction);
 

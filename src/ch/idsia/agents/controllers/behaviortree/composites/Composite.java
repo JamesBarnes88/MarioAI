@@ -1,4 +1,6 @@
-package ch.idsia.agents.controllers.behaviortree;
+package ch.idsia.agents.controllers.behaviortree.composites;
+
+import ch.idsia.agents.controllers.behaviortree.Task;
 
 import java.util.ArrayList;
 import java.util.List;
