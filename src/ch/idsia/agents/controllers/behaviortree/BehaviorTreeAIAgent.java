@@ -7,17 +7,23 @@ import ch.idsia.agents.controllers.behaviortree.composites.Sequence;
 import ch.idsia.benchmark.mario.engine.sprites.Mario;
 import ch.idsia.benchmark.mario.environments.Environment;
 
+import static ch.idsia.benchmark.mario.engine.GeneralizerLevelScene.COIN_ANIM;
+
 public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
-    int trueJumpCounter = 0;
-    int maxJumpCounter = 16;
-    int trueSpeedCounter = 0;
-    int trueMoveCounter = 0;
-    int maxMoveCounter = 10;
-    boolean isMovingSlow = false;
+    private int trueJumpCounter = 0;
+    private int maxJumpCounter = 16;
+
+    private int trueSpeedCounter = 0;
+
+    private int trueMoveCounter = 0;
+    private int maxMoveCounter = 10;
+
+    private boolean isMovingSlow = false;
+
+    private int coinNear = 0;
 
     // Behavior Tree variable
     private BehaviorTree behaviorTree;
-
 
     // Actions
     private Task lowJumpAction = object -> {
@@ -50,20 +56,27 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
     };
 
     private Task moveRightAction = object -> {
-//        System.out.println("moving right");
+        System.out.println("moving right");
         action[Mario.KEY_LEFT] = false;
         action[Mario.KEY_RIGHT] = true;
         return true;
     };
 
+    private Task slowMoveLeftAction = object -> {
+        System.out.println("slow moving left");
+        maxMoveCounter = 2;
+        isMovingSlow = true;
+        action[Mario.KEY_LEFT] = true;
+        action[Mario.KEY_RIGHT] = false;
+        return true;
+    };
+
     private Task moveLeftAction = object -> {
-//        System.out.println("moving right");
+        System.out.println("moving left");
         action[Mario.KEY_RIGHT] = false;
         action[Mario.KEY_LEFT] = true;
         return true;
     };
-
-    private Task doNothing = object -> true;
 
     // Conditionals
     private Task isEnemyNear = object ->  {
@@ -71,9 +84,41 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
             System.out.println("enemy found near");
             return true;
         } else {
-//            System.out.println("enemy not near");
+            System.out.println("enemy not near");
             return false;
         }
+    };
+
+    // Conditionals
+    private Task isCoinNear = object ->  {
+        int leftOrRight = isObjectLeftRight(marioEgoCol, marioEgoRow, 3, false, COIN_ANIM);
+        if (leftOrRight != 0) {
+            coinNear = leftOrRight;
+            System.out.println("enemy found near");
+            return true;
+        } else {
+            System.out.println("enemy not near");
+            return false;
+        }
+    };
+
+    private Task moveToCoin = object -> {
+        if (coinNear != 0) {
+            System.out.println("moving to coin: " + coinNear);
+            if (coinNear < 0) {
+                System.out.println("moving left");
+                action[Mario.KEY_RIGHT] = false;
+                action[Mario.KEY_LEFT] = true;
+            } else {
+                System.out.println("moving right");
+                action[Mario.KEY_RIGHT] = true;
+                action[Mario.KEY_LEFT] = false;
+            }
+            coinNear = 0;
+            return true;
+        }
+
+        return false;
     };
 
     private Task isNotJumping = object -> {
@@ -157,8 +202,10 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
         Sequence continueJumpingSequence = new Sequence();
         Sequence jumpIfBlockingSequence = new Sequence();
         Sequence jumpIfEnemyNearSequence = new Sequence();
+        Sequence jumpIfCoinNearSequence = new Sequence();
 
         Sequence moveIfEnemyNearSequence = new Sequence();
+        Sequence moveIfCoinNearSequence = new Sequence();
         Sequence moveRightSequence = new Sequence();
 
         // Jumping Branch
@@ -172,10 +219,15 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
         // Construct enemy near jumping
         jumpIfEnemyNearSequence.addTask(isEnemyNear).addTask(lowJumpAction);
 
+        jumpIfCoinNearSequence.addTask(isCoinNear).addTask(lowJumpAction);
+
         // Movement Branch
 
         // If Enemy Near
-        moveIfEnemyNearSequence.addTask(isEnemyNear).addTask(slowMoveRightAction);
+        moveIfEnemyNearSequence.addTask(isEnemyNear).addTask(slowMoveRightAction).addTask(speed);
+
+        // If Coin Near
+        moveIfCoinNearSequence.addTask(isCoinNear).addTask(moveToCoin);
 
         // Move Right with speed
         moveRightSequence.addTask(speed).addTask(moveRightAction);
@@ -183,10 +235,14 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
         // Tree Construction
 
         // Construct Jumping Selection
-        jumpSelector.addTask(continueJumpingSequence).addTask(jumpIfBlockingSequence).addTask(jumpIfEnemyNearSequence).addTask(moveRightSequence);
+        jumpSelector.addTask(continueJumpingSequence).addTask(jumpIfBlockingSequence).
+                addTask(jumpIfEnemyNearSequence).addTask(jumpIfCoinNearSequence).
+                addTask(moveRightSequence);
 
         // Construct Move Selection
-        moveSelector.addTask(continueMoving).addTask(new Sequence().addTask(isWallBlocking).addTask(moveRightAction)).addTask(moveIfEnemyNearSequence).addTask(moveRightSequence);
+        moveSelector.addTask(continueMoving).addTask(new Sequence().addTask(isWallBlocking).
+                addTask(moveRightAction)).addTask(moveIfEnemyNearSequence).
+                addTask(moveIfCoinNearSequence).addTask(moveRightSequence);
 
         headSequence.addTask(jumpSelector).addTask(moveSelector);
 
@@ -220,5 +276,26 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
         }
 
         return false;
+    }
+
+    private int isObjectLeftRight(int x, int y, int distance, boolean isAbove, int object) {
+        int toCol = x + distance, toRow;
+        if (isAbove)
+            toRow = y;
+        else
+            toRow = y + distance;
+
+        for (int col = x - distance; col < toCol; ++col) {
+            for (int row = y - distance;row < toRow; ++row) {
+                if (levelScene[row][col] == object) {
+                    if (col < marioEgoCol)
+                        return -1;
+                    else if (col > marioEgoCol)
+                        return 1;
+                }
+            }
+        }
+
+        return 0;
     }
 }
