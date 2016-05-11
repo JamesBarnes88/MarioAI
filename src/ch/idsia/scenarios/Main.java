@@ -56,7 +56,9 @@ public static void main(String[] args)
 //            do
 //            {
 //                marioAIOptions.setLevelDifficulty(i);
-//                marioAIOptions.setLevelRandSeed(20000);
+    // choose 27
+    // choose 35
+                marioAIOptions.setLevelRandSeed(27);
     basicTask.setOptionsAndReset(marioAIOptions);
 //    basicTask.runSingleEpisode(1);
     basicTask.doEpisodes(1,true,1);

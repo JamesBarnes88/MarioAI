@@ -7,6 +7,7 @@ import ch.idsia.agents.controllers.behaviortree.composites.Sequence;
 import ch.idsia.benchmark.mario.engine.sprites.Mario;
 import ch.idsia.benchmark.mario.environments.Environment;
 
+import static ch.idsia.benchmark.mario.engine.GeneralizerLevelScene.BRICK;
 import static ch.idsia.benchmark.mario.engine.GeneralizerLevelScene.COIN_ANIM;
 
 public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
@@ -20,7 +21,7 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
 
     private boolean isMovingSlow = false;
 
-    private int coinNear = 0;
+    private int objectNear = 0;
 
     // Behavior Tree variable
     private BehaviorTree behaviorTree;
@@ -90,10 +91,23 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
     };
 
     // Conditionals
-    private Task isCoinNear = object ->  {
-        int leftOrRight = isObjectLeftRight(marioEgoCol, marioEgoRow, 3, false, COIN_ANIM);
+    private Task isBrickNear = object ->  {
+        int leftOrRight = isObjectLeftRight(marioEgoCol, marioEgoRow, 3, true, BRICK);
         if (leftOrRight != 0) {
-            coinNear = leftOrRight;
+            objectNear = leftOrRight;
+            System.out.println("brick found near");
+            return true;
+        } else {
+            System.out.println("brick not near");
+            return false;
+        }
+    };
+
+    // Conditionals
+    private Task isCoinNear = object ->  {
+        int leftOrRight = isObjectLeftRight(marioEgoCol, marioEgoRow, 2, false, COIN_ANIM);
+        if (leftOrRight != 0) {
+            objectNear = leftOrRight;
             System.out.println("enemy found near");
             return true;
         } else {
@@ -102,10 +116,10 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
         }
     };
 
-    private Task moveToCoin = object -> {
-        if (coinNear != 0) {
-            System.out.println("moving to coin: " + coinNear);
-            if (coinNear < 0) {
+    private Task moveToObject = object -> {
+        if (objectNear != 0) {
+            System.out.println("moving to coin: " + objectNear);
+            if (objectNear < 0) {
                 System.out.println("moving left");
                 action[Mario.KEY_RIGHT] = false;
                 action[Mario.KEY_LEFT] = true;
@@ -114,7 +128,32 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
                 action[Mario.KEY_RIGHT] = true;
                 action[Mario.KEY_LEFT] = false;
             }
-            coinNear = 0;
+            objectNear = 0;
+            return true;
+        }
+
+        return false;
+    };
+
+    private Task slowMoveToObject = object -> {
+        if (objectNear != 0) {
+            System.out.println("moving to object: " + objectNear);
+            if (objectNear < 0) {
+                System.out.println("slow moving left");
+                maxMoveCounter = 1;
+                isMovingSlow = true;
+
+                action[Mario.KEY_RIGHT] = false;
+                action[Mario.KEY_LEFT] = true;
+            } else {
+                System.out.println("slow moving right");
+                maxMoveCounter = 2;
+                isMovingSlow = true;
+
+                action[Mario.KEY_RIGHT] = true;
+                action[Mario.KEY_LEFT] = false;
+            }
+            objectNear = 0;
             return true;
         }
 
@@ -135,15 +174,15 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
         System.out.println("jump count: " + trueJumpCounter);
         if (action[Mario.KEY_JUMP]) {
             if (trueJumpCounter > maxJumpCounter) {
-//                System.out.println("jump height achieved");
+                System.out.println("jump height achieved");
                 action[Mario.KEY_JUMP] = false;
                 trueJumpCounter = 0;
                 maxJumpCounter = 16;
                 return true;
             } else {
                 trueJumpCounter++;
-//                System.out.println("jump still in progress");
-//                System.out.println("jumping");
+                System.out.println("jump still in progress");
+                System.out.println("jumping");
                 action[Mario.KEY_JUMP] = true;
                 return true;
             }
@@ -227,7 +266,7 @@ public class BehaviorTreeAIAgent extends BasicMarioAIAgent implements Agent{
         moveIfEnemyNearSequence.addTask(isEnemyNear).addTask(slowMoveRightAction).addTask(speed);
 
         // If Coin Near
-        moveIfCoinNearSequence.addTask(isCoinNear).addTask(moveToCoin);
+        moveIfCoinNearSequence.addTask(isCoinNear).addTask(speed).addTask(slowMoveToObject);
 
         // Move Right with speed
         moveRightSequence.addTask(speed).addTask(moveRightAction);
